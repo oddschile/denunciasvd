@@ -1,0 +1,79 @@
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(yardstick)
+
+
+den <- read.csv("http://oddschile.net/den.csv")
+
+den %>% 
+    count(denuncia, sort = TRUE)
+
+ggplot(den, aes(denuncia, edad)) +
+    geom_boxplot(fill='#A4A4A4', color="black") +
+    labs(x = NULL,
+         y = "Promedio de Edad de Víctimas de Violencia Domestica")
+
+simple_glm <- den %>%
+            glm(denuncia ~ est_civil + n_hijos + ing_prop + part_jv + part_om + part_dc + part_rel,
+            family = "binomial",
+            data = .)
+
+summary(simple_glm)
+
+library(caret)
+
+set.seed(1234)
+in_train <- createDataPartition(den$denuncia, p = .8, list = FALSE)
+training <- den[in_train,]
+testing <- den[-in_train,]
+
+
+up_train <- upSample(x = select(training, -denuncia),
+                     y = training$denuncia,
+                     yname = "Denuncia") %>%
+    as_tibble()
+
+up_train %>%
+    count(Denuncia)
+
+
+
+den_glm <- train(denuncia ~ est_civil + n_hijos + ing_prop + part_jv + part_om + part_dc + part_rel, method = "glm", family = "binomial",
+                   data = training,
+                   trControl = trainControl(method = "boot",
+                                            sampling = "up"))
+den_glm
+
+summary(den_glm)
+
+
+
+
+set.seed(123)
+
+
+
+confusionMatrix(predict(den_glm, testing),
+testing$denuncia)
+
+
+
+
+
+testing_results <- testing %>%
+ 
+	mutate(`Logistic regression` = predict(den_glm, testing))
+
+accuracy(testing_results, truth = denuncia, estimate = `Logistic regression`)
+
+
+ppv(testing_results, truth = denuncia, estimate = `Logistic regression`)
+
+
+newden <- data.frame("est_civil"= "Divorciada","n_hijos"= 2, "ing_prop" = "Si", "part_jv" = "No", "part_om" = "Si", "part_dc" = "Si", "part_rel" = "Si")
+predict(den_glm, newden)
+
+
+newden2 <- data.frame("est_civil"= "Casada","n_hijos"= 0, "ing_prop" = "No", "part_jv" = "No", "part_om" = "No", "part_dc" = "No", "part_rel" = "Si")
+predict(den_glm, newden2)
